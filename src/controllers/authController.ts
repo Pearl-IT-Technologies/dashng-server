@@ -22,6 +22,8 @@ export const register = async (req: Request, res: Response) => {
   try {
     const { username, email, password, firstName, lastName, phone, role } = req.body;
 
+    console.log('Registering user:', { username, email, password, firstName, lastName, phone, role });
+
     // Check if user already exists
     const userExists = await User.findOne({ 
       $or: [{ email }, { username }] 
@@ -34,11 +36,15 @@ export const register = async (req: Request, res: Response) => {
       });
     }
 
-    // Create new user
+    // Hash password before saving
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // Create new user with hashed password
     const user = await User.create({
       username,
       email,
-      password,
+      password: hashedPassword,
       firstName,
       lastName,
       phone,
@@ -89,7 +95,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Check if password matches
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -98,20 +104,25 @@ export const login = async (req: Request, res: Response) => {
       });
     }
 
+    console.log('Logging in user:', { username, password });
+
     // Generate JWT token
     const token = generateToken(user._id);
+
+    // Remove password from response
+    const userResponse = {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role
+    };
 
     res.status(200).json({
       success: true,
       token,
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role
-      }
+      user: userResponse
     });
   } catch (error: any) {
     res.status(500).json({
@@ -124,7 +135,15 @@ export const login = async (req: Request, res: Response) => {
 // Get current user
 export const getCurrentUser = async (req: Request, res: Response) => {
   try {
-    const user = await User.findById(req.user?.id).select('-password');
+    // Ensure req.user exists and has an id property
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({
+        success: false,
+        message: 'Not authorized, no token or invalid token'
+      });
+    }
+
+    const user = await User.findById(req.user.id).select('-password');
     
     if (!user) {
       return res.status(404).json({
