@@ -52,7 +52,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
     // Set user in request
     req.user = {
-      id: user._id.toString(),
+      id: user._id as string,
       role: user.role
     };
 
